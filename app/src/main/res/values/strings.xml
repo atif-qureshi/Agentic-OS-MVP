@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Agentic OS</string>
+    <string name="hint_command">Enter a command…</string>
+    <string name="btn_understand">Understand</string>
+    <string name="btn_clear">Clear</string>
+    <string name="btn_check">Check</string>
+    <string name="label_intent">INTENT</string>
+    <string name="label_entities">ENTITIES</string>
+    <string name="label_decision">DECISION</string>
+    <string name="label_execution">EXECUTION</string>
+    <string name="label_action_steps">GEMINI ACTION STEPS</string>
+    <string name="label_error">ERROR</string>
+    <string name="processing">Processing with Qwen3…</string>
+    <string name="accessibility_description">Agentic OS uses accessibility to automate Instagram actions via voice commands</string>
+</resources>

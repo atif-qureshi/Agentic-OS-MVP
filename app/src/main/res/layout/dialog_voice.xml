@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#E6000000"
+    android:padding="40dp">
+
+    <!-- Title -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Listening…"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="40dp"/>
+
+    <!-- Animated Pulse Rings -->
+    <FrameLayout
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:layout_gravity="center">
+
+        <View
+            android:id="@+id/pulseRing1"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:layout_gravity="center"
+            android:background="@drawable/circle_pulse"/>
+
+        <View
+            android:id="@+id/pulseRing2"
+            android:layout_width="150dp"
+            android:layout_height="150dp"
+            android:layout_gravity="center"
+            android:background="@drawable/circle_pulse"
+            android:alpha="0.6"/>
+
+        <!-- Center Mic Circle -->
+        <LinearLayout
+            android:layout_width="90dp"
+            android:layout_height="90dp"
+            android:layout_gravity="center"
+            android:background="@drawable/circle_mic_bg"
+            android:gravity="center">
+
+            <ImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@android:drawable/ic_btn_speak_now"
+                android:contentDescription="Mic"/>
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Live transcription -->
+    <TextView
+        android:id="@+id/tvLiveText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Say your command…"
+        android:textSize="18sp"
+        android:textColor="#CCFFFFFF"
+        android:gravity="center"
+        android:layout_marginTop="40dp"
+        android:layout_marginBottom="16dp"
+        android:minLines="2"/>
+
+    <!-- Cancel -->
+    <Button
+        android:id="@+id/btnCancelVoice"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Cancel"
+        android:textColor="#FF4757"
+        android:textSize="14sp"
+        android:layout_marginTop="16dp"/>
+
+</LinearLayout>

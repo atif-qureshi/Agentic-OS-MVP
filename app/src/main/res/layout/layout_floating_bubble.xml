@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="64dp"
+    android:layout_height="64dp">
+
+    <!-- Bubble background circle -->
+    <View
+        android:id="@+id/bubbleBg"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:background="@drawable/bubble_bg"/>
+
+    <!-- Outer pulse ring -->
+    <View
+        android:id="@+id/bubblePulse"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bubble_pulse_ring"
+        android:alpha="0"/>
+
+    <!-- Mic icon -->
+    <ImageView
+        android:id="@+id/ivBubbleMic"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="center"
+        android:src="@android:drawable/ic_btn_speak_now"
+        android:contentDescription="Agentic OS"/>
+
+</FrameLayout>

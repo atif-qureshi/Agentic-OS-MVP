@@ -1,0 +1,31 @@
+# Built application files
+*.apk
+*.aab
+*.ap_
+
+# Build outputs
+build/
+.gradle/
+
+# Android Studio
+*.iml
+.idea/
+*.iws
+*.ipr
+local.properties
+
+# Gradle
+.gradle/
+gradle/wrapper/gradle-wrapper.jar
+
+# Sensitive files
+*.jks
+*.keystore
+keystore.properties
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "description": "Supported intents and their required entities for Agentic OS MVP",
+  "intents": [
+    {
+      "name": "OPEN_APP",
+      "type": "SIMPLE",
+      "required_entities": ["app"],
+      "example": "Open YouTube"
+    },
+    {
+      "name": "CALL_CONTACT",
+      "type": "SIMPLE",
+      "required_entities": ["contact"],
+      "example": "Call Ali"
+    },
+    {
+      "name": "SEND_MESSAGE",
+      "type": "DIFFICULT",
+      "required_entities": ["contact", "message"],
+      "example": "Send a message to Ali saying I am on my way"
+    },
+    {
+      "name": "SEARCH",
+      "type": "DIFFICULT",
+      "required_entities": ["query"],
+      "example": "Find a restaurant near me"
+    },
+    {
+      "name": "OPEN_URL",
+      "type": "SIMPLE",
+      "required_entities": ["url"],
+      "example": "Open google.com"
+    },
+    {
+      "name": "OPEN_SETTINGS",
+      "type": "SIMPLE",
+      "required_entities": [],
+      "example": "Open Settings"
+    },
+    {
+      "name": "GET_TIME",
+      "type": "SIMPLE",
+      "required_entities": [],
+      "example": "What time is it"
+    },
+    {
+      "name": "TAKE_SCREENSHOT",
+      "type": "SIMPLE",
+      "required_entities": [],
+      "example": "Take a screenshot"
+    },
+    {
+      "name": "GO_BACK",
+      "type": "SIMPLE",
+      "required_entities": [],
+      "example": "Go back"
+    },
+    {
+      "name": "UNKNOWN",
+      "type": "UNKNOWN",
+      "required_entities": [],
+      "example": "Do something the model cannot understand"
+    }
+  ]
+}
