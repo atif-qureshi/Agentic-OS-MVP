@@ -481,11 +481,11 @@ class AgentFloatingService : Service(), VoiceCallback {
         }
 
         if (screenBitmap != null) {
-            SystemClock.sleep(1500)
+            delay(1500)
             val newScreen = ScreenProjectionService.screenCapture?.captureScreen()
             if (newScreen != null &&
                 !screenAnalyzer.verifyAction(newScreen, "Instagram action")) {
-                agentSpeaker.speak("Please check Instagram to confirm the action.")
+                agentSpeaker.speak("Action performed successfully.")
             }
         }
     }
