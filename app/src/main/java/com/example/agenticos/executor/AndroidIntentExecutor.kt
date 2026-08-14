@@ -51,8 +51,13 @@ class AndroidIntentExecutor(private val context: Context) {
         val packageName = resolvePackageName(appName)
 
         if (packageName != null) {
-            // Method 1: getLaunchIntentForPackage — works on all Android versions
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+            var launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent == null && packageName == "com.instagram.android") {
+                launchIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://instagram.com/")).apply {
+                    setPackage("com.instagram.android")
+                }
+            }
+
             if (launchIntent != null) {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
@@ -63,11 +68,9 @@ class AndroidIntentExecutor(private val context: Context) {
                     openPlayStore(packageName)
                 }
             }
-            // App not installed
             return openPlayStore(packageName)
         }
 
-        // Unknown app name
         return openPlayStoreSearch(appName)
     }
 
@@ -80,7 +83,8 @@ class AndroidIntentExecutor(private val context: Context) {
             name.contains("gmail")         -> "com.google.android.gm"
             name.contains("chrome")        -> "com.android.chrome"
             name.contains("whatsapp")      -> "com.whatsapp"
-            name.contains("instagram")     -> "com.instagram.android"
+            name.contains("instagram") ||
+            name.contains("insta")         -> "com.instagram.android"
             name.contains("facebook")      -> "com.facebook.katana"
             name.contains("twitter") ||
             name.contains("x")             -> "com.twitter.android"

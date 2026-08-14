@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.util.Log
 import kotlinx.coroutines.delay
 
 /**
@@ -23,6 +24,7 @@ import kotlinx.coroutines.delay
 class InstagramAccessibilityService : AccessibilityService() {
 
     companion object {
+        private const val TAG = "InstagramAccessibilityService"
         var instance: InstagramAccessibilityService? = null
             private set
 
@@ -32,35 +34,73 @@ class InstagramAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        Log.d(TAG, "✓ Agentic OS Accessibility Service CONNECTED & ACTIVE!")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         instance = null
+        Log.d(TAG, "Accessibility Service Destroyed")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (instance == null) {
+            instance = this
+            Log.d(TAG, "✓ Service instance attached on AccessibilityEvent")
+        }
+    }
     override fun onInterrupt() {}
+
+    /**
+     * Get root node, searching all visible windows if a floating overlay (bubble) is focused.
+     */
+    fun getRootNode(): AccessibilityNodeInfo? {
+        val root = rootInActiveWindow
+        if (root != null && root.packageName == INSTAGRAM_PACKAGE) {
+            return root
+        }
+
+        val windowList = windows
+        if (windowList != null) {
+            for (w in windowList) {
+                if (w.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    val node = w.root
+                    if (node != null && node.packageName == INSTAGRAM_PACKAGE) {
+                        return node
+                    }
+                }
+            }
+            for (w in windowList) {
+                if (w.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    val node = w.root
+                    if (node != null) return node
+                }
+            }
+        }
+        return root
+    }
 
     // ── Public Actions ────────────────────────────────────────────────────────
 
     /** Tap element by visible text */
     fun tapByText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
+        val root = getRootNode() ?: return false
         val node = findByText(root, text) ?: return false
+        Log.d(TAG, "✓ Found element by text: '$text'")
         return performClick(node)
     }
 
     /** Tap element by content description */
     fun tapByContentDescription(desc: String): Boolean {
-        val root = rootInActiveWindow ?: return false
+        val root = getRootNode() ?: return false
         val node = findByContentDescription(root, desc) ?: return false
+        Log.d(TAG, "✓ Found element by content description: '$desc'")
         return performClick(node)
     }
 
     /** Type text into focused or hinted input field */
     fun typeText(text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
+        val root = getRootNode() ?: return false
         // Find focused editable field
         val node = findFocusedEditText(root) ?: findEditText(root) ?: return false
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
@@ -72,7 +112,7 @@ class InstagramAccessibilityService : AccessibilityService() {
 
     /** Type text into field with specific hint */
     fun typeInFieldWithHint(hint: String, text: String): Boolean {
-        val root = rootInActiveWindow ?: return false
+        val root = getRootNode() ?: return false
         val node = findByHint(root, hint) ?: return false
         node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
         val args = Bundle().apply {
@@ -83,22 +123,21 @@ class InstagramAccessibilityService : AccessibilityService() {
 
     /** Scroll down in current view */
     fun scrollDown(): Boolean {
-        val root = rootInActiveWindow ?: return false
+        val root = getRootNode() ?: return false
         val scrollable = findScrollable(root) ?: return false
         return scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
     }
 
     /** Scroll up in current view */
     fun scrollUp(): Boolean {
-        val root = rootInActiveWindow ?: return false
+        val root = getRootNode() ?: return false
         val scrollable = findScrollable(root) ?: return false
         return scrollable.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
     }
 
     /** Tap first image/video item in gallery */
     fun tapFirstGalleryItem(): Boolean {
-        val root = rootInActiveWindow ?: return false
-        // Instagram gallery items have content descriptions like "Photo 1" or are RecyclerView items
+        val root = getRootNode() ?: return false
         val node = findFirstImageNode(root) ?: return false
         return performClick(node)
     }
@@ -108,7 +147,8 @@ class InstagramAccessibilityService : AccessibilityService() {
 
     /** Check if Instagram is currently in foreground */
     fun isInstagramOpen(): Boolean {
-        return rootInActiveWindow?.packageName == INSTAGRAM_PACKAGE
+        val root = getRootNode()
+        return root?.packageName == INSTAGRAM_PACKAGE
     }
 
     /** Wait for element with text to appear */
@@ -201,23 +241,37 @@ class InstagramAccessibilityService : AccessibilityService() {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    fun doubleTapAt(x: Float, y: Float): Boolean {
+        val path = Path().apply { moveTo(x, y) }
+        val stroke1 = GestureDescription.StrokeDescription(path, 0, 40)
+        val stroke2 = GestureDescription.StrokeDescription(path, 100, 40)
+        val gesture = GestureDescription.Builder()
+            .addStroke(stroke1)
+            .addStroke(stroke2)
+            .build()
+        Log.d(TAG, "✓ Dispatching double-tap gesture at ($x, $y)")
+        return dispatchGesture(gesture, null, null)
+    }
+
     private fun performClick(node: AccessibilityNodeInfo): Boolean {
-        if (node.isClickable) {
-            return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        }
-        // Try parent
-        val parent = node.parent ?: return false
-        if (parent.isClickable) {
-            return parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        }
-        // Try coordinate tap
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
-        if (!bounds.isEmpty) {
-            return tapCoordinate(
-                bounds.centerX().toFloat(),
-                bounds.centerY().toFloat()
-            )
+        if (!bounds.isEmpty && bounds.centerX() > 0 && bounds.centerY() > 0) {
+            // If container is wide (>300px), Heart icon is on the left edge (bounds.left + 75)
+            val tapX = if (bounds.width() > 300) (bounds.left + 75).toFloat() else bounds.centerX().toFloat()
+            val tapY = bounds.centerY().toFloat()
+
+            Log.d(TAG, "✓ Dispatching touch gesture tap at ($tapX, $tapY)")
+            val tapped = tapCoordinate(tapX, tapY)
+            if (tapped) return true
+        }
+
+        var current: AccessibilityNodeInfo? = node
+        while (current != null) {
+            if (current.isClickable) {
+                return current.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            }
+            current = current.parent
         }
         return false
     }

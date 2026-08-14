@@ -66,8 +66,12 @@ class MainActivity : AppCompatActivity(), CommandControllerCallback, VoiceCallba
     private val micPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) { voiceManager.startWakeWordListening(); showWakeWordHint() }
-        else Toast.makeText(this, "Microphone permission denied", Toast.LENGTH_SHORT).show()
+        if (granted) {
+            showWakeWordHint()
+            startFloatingBubbleService()
+        } else {
+            Toast.makeText(this, "Microphone permission denied", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private val overlayPermissionLauncher = registerForActivityResult(
@@ -160,7 +164,6 @@ class MainActivity : AppCompatActivity(), CommandControllerCallback, VoiceCallba
     private fun requestMicAndStartWakeWord() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED) {
-            voiceManager.startWakeWordListening()
             showWakeWordHint()
         } else {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -195,7 +198,11 @@ class MainActivity : AppCompatActivity(), CommandControllerCallback, VoiceCallba
     // ── VoiceCallback ─────────────────────────────────────────────────────────
 
     override fun onWakeWordDetected() {
-        runOnUiThread { startVoiceCommand() }
+        // VoiceManager starts command listening after this — only show UI
+        runOnUiThread {
+            showVoiceDialog()
+            voiceDialog?.setListening()
+        }
     }
 
     override fun onCommandReceived(text: String) {

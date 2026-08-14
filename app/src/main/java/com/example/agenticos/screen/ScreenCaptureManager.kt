@@ -11,26 +11,22 @@ import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
-import kotlin.coroutines.resume
 
 /**
  * Captures phone screen using MediaProjection API.
- * No root required — user grants permission once.
- *
- * Usage:
- * 1. Call requestPermission() from Activity to get intent
- * 2. Pass result to start()
- * 3. Call capture() to get current screen as Bitmap
+ * Uses continuous frame listener to ensure screen bitmap is ALWAYS available.
  */
 class ScreenCaptureManager(private val context: Context) {
 
     companion object {
         const val REQUEST_CODE = 1001
+        private const val TAG = "ScreenCaptureManager"
     }
 
     private var mediaProjection: MediaProjection? = null
@@ -42,7 +38,9 @@ class ScreenCaptureManager(private val context: Context) {
     private var screenHeight = 0
     private var screenDpi    = 0
 
-    // ── Setup ─────────────────────────────────────────────────────────────────
+    @Volatile
+    private var latestBitmap: Bitmap? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -64,60 +62,127 @@ class ScreenCaptureManager(private val context: Context) {
         val mgr = context.getSystemService(
             Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
+        val callback = object : MediaProjection.Callback() {
+            override fun onStop() {
+                Log.d(TAG, "MediaProjection stopped")
+                stopInternal()
+            }
+        }
+
         mediaProjection = mgr.getMediaProjection(resultCode, data)
+        mediaProjection?.registerCallback(callback, mainHandler)
 
         imageReader = ImageReader.newInstance(
             screenWidth, screenHeight,
-            PixelFormat.RGBA_8888, 2
+            PixelFormat.RGBA_8888, 3
         )
+
+        imageReader?.setOnImageAvailableListener({ reader ->
+            var image: Image? = null
+            try {
+                image = reader.acquireLatestImage() ?: reader.acquireNextImage()
+                if (image != null) {
+                    val planes = image.planes
+                    val buffer = planes[0].buffer
+                    val pixelStride = planes[0].pixelStride
+                    val rowStride   = planes[0].rowStride
+                    val rowPadding  = (rowStride - pixelStride * screenWidth).coerceAtLeast(0)
+
+                    buffer.rewind()
+
+                    val bmp = Bitmap.createBitmap(
+                        screenWidth + rowPadding / pixelStride,
+                        screenHeight,
+                        Bitmap.Config.ARGB_8888
+                    )
+                    bmp.copyPixelsFromBuffer(buffer)
+
+                    val cropped = Bitmap.createBitmap(bmp, 0, 0, screenWidth, screenHeight)
+                    if (bmp != cropped) {
+                        bmp.recycle()
+                    }
+
+                    synchronized(this) {
+                        val old = latestBitmap
+                        latestBitmap = cropped
+                        old?.recycle()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing frame: ${e.message}")
+            } finally {
+                image?.close()
+            }
+        }, mainHandler)
 
         virtualDisplay = mediaProjection?.createVirtualDisplay(
             "AgentCapture",
             screenWidth, screenHeight, screenDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface, null, null
+            imageReader?.surface, null, mainHandler
         )
+
+        Log.d(TAG, "Screen projection started: ${screenWidth}x${screenHeight}")
+    }
+
+    private fun stopInternal() {
+        virtualDisplay?.release()
+        imageReader?.close()
+        virtualDisplay = null
+        imageReader = null
+        synchronized(this) {
+            latestBitmap?.recycle()
+            latestBitmap = null
+        }
     }
 
     /** Stop screen capture and release resources */
     fun stop() {
-        virtualDisplay?.release()
-        imageReader?.close()
         mediaProjection?.stop()
-        virtualDisplay   = null
-        imageReader      = null
-        mediaProjection  = null
+        stopInternal()
+        mediaProjection = null
     }
 
-    val isRunning: Boolean get() = mediaProjection != null
+    val isRunning: Boolean get() = mediaProjection != null && virtualDisplay != null
 
     // ── Capture ───────────────────────────────────────────────────────────────
 
     /**
      * Capture current screen as Bitmap.
-     * Returns null if capture not started or failed.
+     * Guaranteed to return latest cached frame or acquire fresh frame.
      */
     fun captureScreen(): Bitmap? {
+        synchronized(this) {
+            val current = latestBitmap
+            if (current != null && !current.isRecycled) {
+                return current.copy(current.config ?: Bitmap.Config.ARGB_8888, false)
+            }
+        }
+
+        // Fallback directly from reader if listener hasn't fired yet
         val reader = imageReader ?: return null
         var image: Image? = null
         return try {
-            image = reader.acquireLatestImage() ?: return null
+            image = reader.acquireLatestImage() ?: reader.acquireNextImage() ?: return null
             val planes = image.planes
             val buffer = planes[0].buffer
             val pixelStride = planes[0].pixelStride
             val rowStride   = planes[0].rowStride
-            val rowPadding  = rowStride - pixelStride * screenWidth
+            val rowPadding  = (rowStride - pixelStride * screenWidth).coerceAtLeast(0)
 
-            val bitmap = Bitmap.createBitmap(
+            buffer.rewind()
+
+            val bmp = Bitmap.createBitmap(
                 screenWidth + rowPadding / pixelStride,
                 screenHeight,
                 Bitmap.Config.ARGB_8888
             )
-            bitmap.copyPixelsFromBuffer(buffer)
-
-            // Crop to exact screen size
-            Bitmap.createBitmap(bitmap, 0, 0, screenWidth, screenHeight)
+            bmp.copyPixelsFromBuffer(buffer)
+            val cropped = Bitmap.createBitmap(bmp, 0, 0, screenWidth, screenHeight)
+            if (bmp != cropped) bmp.recycle()
+            cropped
         } catch (e: Exception) {
+            Log.e(TAG, "captureScreen fallback failed: ${e.message}")
             null
         } finally {
             image?.close()
@@ -126,7 +191,6 @@ class ScreenCaptureManager(private val context: Context) {
 
     /**
      * Capture screen and return as JPEG byte array.
-     * Compressed to reduce size for AI processing.
      */
     fun captureAsJpeg(quality: Int = 70): ByteArray? {
         val bitmap = captureScreen() ?: return null
@@ -149,3 +213,4 @@ class ScreenCaptureManager(private val context: Context) {
         return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
     }
 }
+

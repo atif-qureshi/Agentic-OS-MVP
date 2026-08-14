@@ -26,8 +26,19 @@ class AgentSpeaker(context: Context) {
     }
 
     /** Speak text out loud — interrupts any current speech */
-    fun speak(text: String) {
-        if (!isReady) return
+    fun speak(text: String, onDone: (() -> Unit)? = null) {
+        if (!isReady) {
+            onDone?.invoke()
+            return
+        }
+        if (onDone != null) {
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {}
+                override fun onDone(utteranceId: String?) { onDone() }
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) { onDone() }
+            })
+        }
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "agent_response")
     }
 
@@ -40,6 +51,20 @@ class AgentSpeaker(context: Context) {
     /** Stop speaking immediately */
     fun stop() {
         tts?.stop()
+    }
+
+    /** Run action after current speech finishes (or immediately if silent). */
+    fun whenIdle(action: () -> Unit) {
+        if (!isReady || !isSpeaking()) {
+            action()
+            return
+        }
+        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {}
+            override fun onDone(utteranceId: String?) { action() }
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) { action() }
+        })
     }
 
     /** Check if currently speaking */

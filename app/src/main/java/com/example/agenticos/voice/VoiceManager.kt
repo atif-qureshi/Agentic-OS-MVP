@@ -11,15 +11,12 @@ import android.speech.SpeechRecognizer
 import java.util.Locale
 
 /**
- * VoiceManager — Two modes:
+ * VoiceManager — stable two-mode mic control:
  *
- * 1. WAKE_WORD mode — single shot listen, stops after result/error.
- *    User must manually call startWakeWordListening() to listen again.
- *    This prevents continuous mic usage.
+ * WAKE_WORD — continuous background loop, silently restarts on timeout.
+ * COMMAND   — single listen session, stops after result/error.
  *
- * 2. COMMAND mode — listens for one command then stops.
- *
- * Mic is ONLY on when explicitly started. Never auto-restarts.
+ * Use pauseListening() before TTS; resumeWakeWord() after TTS finishes.
  */
 class VoiceManager(
     private val context: Context,
@@ -30,45 +27,62 @@ class VoiceManager(
             "hey agentic", "hey agent", "agentic",
             "hi agentic", "ok agentic", "hello agentic"
         )
-        private const val START_DELAY_MS = 200L
+        private const val START_DELAY_MS = 350L
+        private const val WAKE_RESTART_DELAY_MS = 500L
     }
 
     private var recognizer: SpeechRecognizer? = null
     private var currentMode: Mode = Mode.IDLE
     private val handler = Handler(Looper.getMainLooper())
     private var isDestroyed = false
+    private var isPaused = false
+
+    private val wakeWordRestart = Runnable {
+        if (!isDestroyed && !isPaused && currentMode == Mode.IDLE) {
+            currentMode = Mode.WAKE_WORD
+            startOnce()
+        }
+    }
 
     enum class Mode { IDLE, WAKE_WORD, COMMAND }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /**
-     * Start ONE wake word listen session.
-     * Mic turns ON, listens once, then turns OFF.
-     * Does NOT auto-restart — caller must call again if needed.
-     */
+    /** Disable continuous wake-word loop (Tap-only mode). */
     fun startWakeWordListening() {
-        if (isDestroyed) return
-        if (currentMode == Mode.COMMAND) return  // Don't interrupt command
-        currentMode = Mode.WAKE_WORD
-        startOnce()
+        // Tap-only mode: Wake word disabled
     }
 
-    /**
-     * Start ONE command listen session.
-     * Mic turns ON, listens once, then turns OFF.
-     */
+    /** Start one command listen session. */
     fun startCommandListening() {
         if (isDestroyed) return
+        isPaused = false
+        handler.removeCallbacks(wakeWordRestart)
         currentMode = Mode.COMMAND
+        destroyRecognizer()
         startOnce()
     }
 
-    /**
-     * Immediately stop all listening. Mic goes OFF.
-     */
+    /** Pause listening. */
+    fun pauseListening() {
+        isPaused = true
+        handler.removeCallbacks(wakeWordRestart)
+        if (currentMode == Mode.WAKE_WORD || currentMode == Mode.COMMAND) {
+            currentMode = Mode.IDLE
+            destroyRecognizer()
+        }
+    }
+
+    /** Tap-only mode — do not auto resume background wake word loop. */
+    fun resumeWakeWord() {
+        // Tap-only mode: Wake word disabled
+    }
+
+    /** Immediately stop all listening. */
     fun stopAll() {
+        isPaused = true
         currentMode = Mode.IDLE
+        handler.removeCallbacks(wakeWordRestart)
         handler.removeCallbacksAndMessages(null)
         destroyRecognizer()
     }
@@ -78,13 +92,13 @@ class VoiceManager(
         stopAll()
     }
 
-    val isListening: Boolean
-        get() = currentMode != Mode.IDLE
+    val isListening: Boolean get() = currentMode != Mode.IDLE
+    val isInCommandMode: Boolean get() = currentMode == Mode.COMMAND
 
     // ── Core ──────────────────────────────────────────────────────────────────
 
     private fun startOnce() {
-        if (isDestroyed || currentMode == Mode.IDLE) return
+        if (isDestroyed || isPaused || currentMode == Mode.IDLE) return
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             callback.onVoiceError("Speech recognition not available")
             currentMode = Mode.IDLE
@@ -94,12 +108,19 @@ class VoiceManager(
         destroyRecognizer()
 
         handler.postDelayed({
-            if (isDestroyed || currentMode == Mode.IDLE) return@postDelayed
-            recognizer = SpeechRecognizer.createSpeechRecognizer(context).also {
+            if (isDestroyed || isPaused || currentMode == Mode.IDLE) return@postDelayed
+            recognizer = SpeechRecognizer.createSpeechRecognizer(context.applicationContext).also {
                 it.setRecognitionListener(listener)
                 it.startListening(buildIntent())
             }
         }, START_DELAY_MS)
+    }
+
+    private fun scheduleWakeWordRestart() {
+        if (isDestroyed || isPaused) return
+        currentMode = Mode.IDLE
+        handler.removeCallbacks(wakeWordRestart)
+        handler.postDelayed(wakeWordRestart, WAKE_RESTART_DELAY_MS)
     }
 
     private fun destroyRecognizer() {
@@ -141,7 +162,6 @@ class VoiceManager(
                 ?: emptyList()
 
             val modeAtTime = currentMode
-            // Mic is now OFF — set to IDLE
             currentMode = Mode.IDLE
             destroyRecognizer()
 
@@ -154,33 +174,13 @@ class VoiceManager(
 
         override fun onError(error: Int) {
             val modeAtTime = currentMode
-            // Mic is now OFF
             currentMode = Mode.IDLE
             destroyRecognizer()
 
-            when (error) {
-                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
-                    callback.onVoiceError("Microphone permission denied")
-                }
-                SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                    // Normal — user didn't speak or no match
-                    if (modeAtTime == Mode.COMMAND) {
-                        callback.onVoiceError("No speech detected. Tap mic to try again.")
-                    }
-                    // Wake word: silently stop — user didn't say anything
-                }
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                    // Busy — just stop, user can tap again
-                    if (modeAtTime == Mode.COMMAND) {
-                        callback.onVoiceError("Microphone busy. Please try again.")
-                    }
-                }
-                else -> {
-                    if (modeAtTime == Mode.COMMAND) {
-                        callback.onVoiceError("Voice error. Tap mic to try again.")
-                    }
-                }
+            when (modeAtTime) {
+                Mode.WAKE_WORD -> handleWakeWordError(error)
+                Mode.COMMAND   -> handleCommandError(error)
+                Mode.IDLE      -> {}
             }
         }
 
@@ -189,20 +189,32 @@ class VoiceManager(
         override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
-    // ── Result Handlers ───────────────────────────────────────────────────────
+    // ── Result / Error Handlers ───────────────────────────────────────────────
 
     private fun handleWakeWordResult(matches: List<String>) {
         val heard = matches.joinToString(" ").lowercase()
         if (WAKE_WORDS.any { heard.contains(it) }) {
-            // Wake word detected — switch to command mode
+            isPaused = false
+            handler.removeCallbacks(wakeWordRestart)
             currentMode = Mode.COMMAND
             handler.post {
                 callback.onWakeWordDetected()
-                // Start command listening AFTER callback (dialog will show)
                 startOnce()
             }
+        } else {
+            scheduleWakeWordRestart()
         }
-        // No wake word → mic stays off until next manual call
+    }
+
+    private fun handleWakeWordError(error: Int) {
+        when (error) {
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                callback.onVoiceError("Microphone permission denied")
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                handler.postDelayed(wakeWordRestart, 1000)
+            else ->
+                scheduleWakeWordRestart()
+        }
     }
 
     private fun handleCommandResult(matches: List<String>) {
@@ -214,25 +226,40 @@ class VoiceManager(
         }
     }
 
+    private fun handleCommandError(error: Int) {
+        when (error) {
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                callback.onVoiceError("Microphone permission denied")
+            SpeechRecognizer.ERROR_NO_MATCH,
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                callback.onVoiceError("No speech detected. Tap mic to try again.")
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                callback.onVoiceError("Microphone busy. Please try again.")
+            else ->
+                callback.onVoiceError("Voice error. Tap mic to try again.")
+        }
+    }
+
     // ── Intent Builder ────────────────────────────────────────────────────────
 
     private fun buildIntent() = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
             RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.ENGLISH)
-        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, currentMode == Mode.COMMAND)
 
         if (currentMode == Mode.WAKE_WORD) {
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 300L)
             putExtra(RecognizerIntent
-                .EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+                .EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L)
             putExtra(RecognizerIntent
-                .EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
+                .EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
         } else {
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800L)
             putExtra(RecognizerIntent
-                .EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
+                .EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 7000L)
             putExtra(RecognizerIntent
-                .EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+                .EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L)
         }
     }
 }
