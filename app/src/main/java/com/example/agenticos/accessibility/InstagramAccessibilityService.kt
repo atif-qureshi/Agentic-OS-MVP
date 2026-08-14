@@ -161,6 +161,41 @@ class InstagramAccessibilityService : AccessibilityService() {
         return false
     }
 
+    /** Tap comment icon specifically */
+    fun tapCommentIcon(): Boolean {
+        val root = getRootNode() ?: return false
+        val node = findCommentButton(root)
+        if (node != null) {
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            val tapX = if (bounds.width() > 300) (bounds.left + 220).toFloat() else bounds.centerX().toFloat()
+            val tapY = bounds.centerY().toFloat()
+            Log.d(TAG, "✓ Tapping comment icon at ($tapX, $tapY)")
+            return tapCoordinate(tapX, tapY)
+        }
+        val bounds = Rect()
+        root.getBoundsInScreen(bounds)
+        val defaultY = if (bounds.height() > 0) bounds.height() * 0.55f else 1200f
+        Log.d(TAG, "✓ Fallback tapping comment icon at (220, $defaultY)")
+        return tapCoordinate(220f, defaultY)
+    }
+
+    private fun findCommentButton(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val desc = node.contentDescription?.toString() ?: ""
+        if (desc.equals("Comment", ignoreCase = true) || desc.equals("Add a comment…", ignoreCase = true)) {
+            return node
+        }
+        if (!desc.contains("photo", ignoreCase = true) && !desc.contains("likes", ignoreCase = true)) {
+            if (desc.contains("comment", ignoreCase = true)) return node
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findCommentButton(child)
+            if (found != null) return found
+        }
+        return null
+    }
+
     // ── Node Finders ──────────────────────────────────────────────────────────
 
     private fun findByText(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
@@ -174,7 +209,26 @@ class InstagramAccessibilityService : AccessibilityService() {
     }
 
     private fun findByContentDescription(node: AccessibilityNodeInfo, desc: String): AccessibilityNodeInfo? {
-        if (node.contentDescription?.toString()?.contains(desc, ignoreCase = true) == true) return node
+        val nodeDesc = node.contentDescription?.toString() ?: ""
+
+        // Exclude photo container nodes summarizing post details ("photo 1 of 4 by wahzir in the hood, 22,096 likes, 100 comments")
+        if (nodeDesc.contains("photo", ignoreCase = true) ||
+            nodeDesc.contains("likes", ignoreCase = true) ||
+            nodeDesc.contains("1 of", ignoreCase = true)) {
+            if (!desc.contains("photo", ignoreCase = true)) {
+                for (i in 0 until node.childCount) {
+                    val child = node.getChild(i) ?: continue
+                    val found = findByContentDescription(child, desc)
+                    if (found != null) return found
+                }
+                return null
+            }
+        }
+
+        if (nodeDesc.equals(desc, ignoreCase = true) || nodeDesc.contains(desc, ignoreCase = true)) {
+            return node
+        }
+
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
             val found = findByContentDescription(child, desc)
