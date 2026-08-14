@@ -257,11 +257,22 @@ class InstagramAccessibilityService : AccessibilityService() {
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
         if (!bounds.isEmpty && bounds.centerX() > 0 && bounds.centerY() > 0) {
-            // If container is wide (>300px), Heart icon is on the left edge (bounds.left + 75)
-            val tapX = if (bounds.width() > 300) (bounds.left + 75).toFloat() else bounds.centerX().toFloat()
+            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+            val text = node.text?.toString()?.lowercase() ?: ""
+
+            // If container is wide (>300px), calculate exact icon offset based on description
+            val tapX = if (bounds.width() > 300) {
+                when {
+                    desc.contains("comment") || text.contains("comment") -> (bounds.left + 220).toFloat()
+                    desc.contains("send") || desc.contains("share") -> (bounds.left + 350).toFloat()
+                    else -> (bounds.left + 75).toFloat() // Default like heart
+                }
+            } else {
+                bounds.centerX().toFloat()
+            }
             val tapY = bounds.centerY().toFloat()
 
-            Log.d(TAG, "✓ Dispatching touch gesture tap at ($tapX, $tapY)")
+            Log.d(TAG, "✓ Dispatching touch gesture tap at ($tapX, $tapY) for desc: '$desc'")
             val tapped = tapCoordinate(tapX, tapY)
             if (tapped) return true
         }

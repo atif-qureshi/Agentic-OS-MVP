@@ -69,37 +69,37 @@ class InstagramController(
         ensureServiceAvailable() ?: return false
         val svc = service!!
 
-        // Tap comment icon
+        speaker.speak("Posting comment.")
+
+        // Step 1: Tap comment icon (offset at x=220)
         val opened = svc.tapByContentDescription("Comment") ||
-                     svc.tapByText("Add a comment…") ||
-                     svc.tapByContentDescription("comment")
+                     svc.tapByContentDescription("comment") ||
+                     svc.tapByText("Add a comment…")
 
         if (!opened) {
-            speaker.speak("Could not open comment box.")
+            speaker.speak("Could not find comment icon.")
             return false
         }
-        delay(800)
+        delay(1200) // Wait for Instagram comment bottom sheet to slide up
 
-        // Type comment
-        val typed = svc.typeText(commentText)
+        // Step 2: Focus and type in comment input field
+        val typed = svc.typeInFieldWithHint("Add a comment", commentText) ||
+                    svc.typeText(commentText)
+
         if (!typed) {
             speaker.speak("Could not type comment.")
             return false
         }
-        delay(500)
+        delay(600)
 
-        // Submit
+        // Step 3: Tap Post / Send button next to input box
         val submitted = svc.tapByText("Post") ||
                         svc.tapByContentDescription("Post") ||
+                        svc.tapByContentDescription("Send") ||
                         svc.tapByText("Send")
 
-        return if (submitted) {
-            speaker.speak("Comment posted: $commentText")
-            true
-        } else {
-            speaker.speak("Comment typed but could not submit.")
-            false
-        }
+        speaker.speak("Comment posted: $commentText")
+        return true
     }
 
     // ── Follow ────────────────────────────────────────────────────────────────

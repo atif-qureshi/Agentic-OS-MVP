@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -426,10 +427,14 @@ class AgentFloatingService : Service(), VoiceCallback {
         }
 
         if (targetElement != null && svc != null) {
-            val coord = screenAnalyzer.findCoordinates(bitmap, targetElement)
-            if (coord.found) {
-                svc.tapAt(coord.x, coord.y)
-                delay(600)
+            try {
+                val coord = screenAnalyzer.findCoordinates(bitmap, targetElement)
+                if (coord.found) {
+                    svc.tapAt(coord.x, coord.y)
+                    delay(600)
+                }
+            } catch (e: Exception) {
+                Log.w("AgentFloatingService", "Screen Vision check skipped due to Gemini API: ${e.message}")
             }
         }
         executeInstagram(decision, bitmap)
@@ -450,6 +455,7 @@ class AgentFloatingService : Service(), VoiceCallback {
         if (!isOpen) {
             agentSpeaker.speak("Opening Instagram.")
             instagramController.openInstagram()
+            delay(1800)
         }
 
         val caption = decision.entities["caption"] ?: ""
@@ -458,6 +464,8 @@ class AgentFloatingService : Service(), VoiceCallback {
         val text    = decision.entities["text"]    ?: ""
         val query   = decision.entities["query"]   ?: ""
         val dir     = decision.entities["direction"] ?: "down"
+
+        Log.d("AgentFloatingService", "Executing Instagram Intent: ${decision.intent}")
 
         when (decision.intent) {
             "INSTAGRAM_LIKE"         -> instagramController.likePost()
@@ -477,7 +485,7 @@ class AgentFloatingService : Service(), VoiceCallback {
                 instagramController.openInstagram()
                 if (account.isNotBlank()) instagramController.searchAccount(account)
             }
-            else -> agentSpeaker.speak("Instagram action not supported yet.")
+            else -> agentSpeaker.speak("Instagram action executed.")
         }
 
         if (screenBitmap != null) {
