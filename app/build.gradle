@@ -4,6 +4,12 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.serialization' version '1.9.0'
 }
 
+// Load secrets from local.properties
+Properties localProperties = new Properties()
+if (project.rootProject.file('local.properties').exists()) {
+    localProperties.load(project.rootProject.file('local.properties').newDataInputStream())
+}
+
 android {
     namespace 'com.example.agenticos'
     compileSdk 34
@@ -16,6 +22,9 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Add API key to BuildConfig
+        buildConfigField "String", "GEMINI_API_KEY", "\"${localProperties.getProperty('GEMINI_API_KEY', '')}\""
     }
 
     buildTypes {
