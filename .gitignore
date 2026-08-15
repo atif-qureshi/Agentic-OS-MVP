@@ -29,3 +29,11 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Python runtime caches
+__pycache__/
+*.py[cod]
+
+# Local environment files (do NOT commit)
+backend/.env
+.env

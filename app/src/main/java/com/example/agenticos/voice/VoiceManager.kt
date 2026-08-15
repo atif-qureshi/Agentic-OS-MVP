@@ -24,8 +24,15 @@ class VoiceManager(
 ) {
     companion object {
         private val WAKE_WORDS = listOf(
-            "hey agentic", "hey agent", "agentic",
-            "hi agentic", "ok agentic", "hello agentic"
+            "hey agentic",
+            "hey agentic os",
+            "hey agent",
+            "agentic os",
+            "agentic",
+            "hi agentic",
+            "ok agentic",
+            "okay agentic",
+            "hello agentic"
         )
         private const val START_DELAY_MS = 350L
         private const val WAKE_RESTART_DELAY_MS = 500L
@@ -48,9 +55,14 @@ class VoiceManager(
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /** Disable continuous wake-word loop (Tap-only mode). */
+    /** Start wake-word mode so the assistant listens for phrases like "Hey Agentic". */
     fun startWakeWordListening() {
-        // Tap-only mode: Wake word disabled
+        if (isDestroyed) return
+        isPaused = false
+        currentMode = Mode.WAKE_WORD
+        handler.removeCallbacks(wakeWordRestart)
+        destroyRecognizer()
+        startOnce()
     }
 
     /** Start one command listen session. */
@@ -73,9 +85,13 @@ class VoiceManager(
         }
     }
 
-    /** Tap-only mode — do not auto resume background wake word loop. */
+    /** Resume background wake-word listening after a command or TTS has finished. */
     fun resumeWakeWord() {
-        // Tap-only mode: Wake word disabled
+        if (isDestroyed || isPaused) return
+        if (currentMode != Mode.IDLE) return
+        currentMode = Mode.WAKE_WORD
+        handler.removeCallbacks(wakeWordRestart)
+        startOnce()
     }
 
     /** Immediately stop all listening. */
@@ -192,8 +208,8 @@ class VoiceManager(
     // ── Result / Error Handlers ───────────────────────────────────────────────
 
     private fun handleWakeWordResult(matches: List<String>) {
-        val heard = matches.joinToString(" ").lowercase()
-        if (WAKE_WORDS.any { heard.contains(it) }) {
+        val heard = normalizeSpeechText(matches.joinToString(" "))
+        if (matchesWakeWord(heard)) {
             isPaused = false
             handler.removeCallbacks(wakeWordRestart)
             currentMode = Mode.COMMAND
@@ -204,6 +220,20 @@ class VoiceManager(
         } else {
             scheduleWakeWordRestart()
         }
+    }
+
+    private fun matchesWakeWord(text: String): Boolean {
+        val normalized = text.lowercase(Locale.getDefault())
+        return WAKE_WORDS.any { wakeWord ->
+            normalized.contains(wakeWord) || normalized.contains(wakeWord.replace(" ", ""))
+        }
+    }
+
+    private fun normalizeSpeechText(text: String): String {
+        return text.lowercase(Locale.getDefault())
+            .replace("[\\p{Punct}]".toRegex(), " ")
+            .replace("\\s+".toRegex(), " ")
+            .trim()
     }
 
     private fun handleWakeWordError(error: Int) {

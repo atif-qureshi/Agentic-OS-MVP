@@ -57,16 +57,17 @@ class CommandController(
 
     /**
      * Called when user taps the connection check button.
+     * Checks Python Backend (Groq) availability.
      */
     suspend fun onCheckConnectionRequested() {
         callback.onConnectionChecking()
-        val reachable = repository.checkOllamaConnection()
-        if (reachable) {
+        val isConnected = repository.checkBackendConnection()
+        if (isConnected) {
             callback.onConnectionSuccess()
         } else {
             callback.onConnectionFailed(
-                "Cannot reach Ollama at http://10.0.2.2:11434\n" +
-                "Make sure Ollama is running on your computer."
+                "Python Backend not available.\n" +
+                "Make sure FastAPI server is running on port 8000."
             )
         }
     }

@@ -1,5 +1,7 @@
 package com.example.agenticos.ai
 
+import com.example.agenticos.context.AgentContext
+import com.example.agenticos.context.ContextMemory
 import com.example.agenticos.model.CommandResult
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -43,11 +45,11 @@ class OllamaClient {
     // ── Public API ────────────────────────────────────────────────────────────
 
     @Throws(OllamaException::class)
-    suspend fun extractIntent(userCommand: String): CommandResult {
+    suspend fun extractIntent(userCommand: String, context: AgentContext = ContextMemory.snapshot()): CommandResult {
         val baseUrl = resolveBaseUrl()
             ?: throw OllamaException("Cannot connect to Ollama. Make sure it is running on your PC.")
 
-        val requestJson = buildRequestJson(userCommand)
+        val requestJson = buildRequestJson(userCommand, context)
         val requestBody = requestJson.toRequestBody(JSON_TYPE)
         val request = Request.Builder()
             .url("$baseUrl/api/chat")
@@ -115,8 +117,8 @@ class OllamaClient {
 
     // ── Request Builder ───────────────────────────────────────────────────────
 
-    private fun buildRequestJson(userCommand: String): String {
-        val systemContent = PromptBuilder.systemPrompt
+    private fun buildRequestJson(userCommand: String, context: AgentContext = ContextMemory.snapshot()): String {
+        val systemContent = PromptBuilder.buildSystemPrompt(context)
             .replace("\\", "\\\\")
             .replace("\"", "\\\"")
             .replace("\n", "\\n")

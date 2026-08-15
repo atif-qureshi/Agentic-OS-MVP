@@ -68,6 +68,7 @@ class MainActivity : AppCompatActivity(), CommandControllerCallback, VoiceCallba
     ) { granted ->
         if (granted) {
             showWakeWordHint()
+            voiceManager.startWakeWordListening()
             startFloatingBubbleService()
         } else {
             Toast.makeText(this, "Microphone permission denied", Toast.LENGTH_SHORT).show()
@@ -165,6 +166,7 @@ class MainActivity : AppCompatActivity(), CommandControllerCallback, VoiceCallba
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED) {
             showWakeWordHint()
+            voiceManager.startWakeWordListening()
         } else {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
@@ -234,7 +236,9 @@ class MainActivity : AppCompatActivity(), CommandControllerCallback, VoiceCallba
         runOnUiThread {
             dismissVoiceDialog()
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-            // Mic stays OFF — user must tap again
+            Handler(Looper.getMainLooper()).postDelayed({
+                voiceManager.startWakeWordListening()
+            }, 600)
         }
     }
 
